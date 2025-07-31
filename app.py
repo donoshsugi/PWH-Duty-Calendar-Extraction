@@ -4,7 +4,7 @@ import re
 from calendar import monthrange
 import io
 
-# --- Helper Function to Process the Data (Adapted from our previous script) ---
+# --- Helper Function to Process the Data ---
 def process_roster(file_bytes, sheet_name, duty_column_name, filename):
     """
     Processes the uploaded Excel file bytes to generate a calendar CSV.
@@ -17,13 +17,14 @@ def process_roster(file_bytes, sheet_name, duty_column_name, filename):
 
     Returns:
         DataFrame: A pandas DataFrame ready for CSV conversion, or None if an error occurs.
+        tuple: (month_name, year_str) if successful, otherwise None.
     """
     # --- 1. Extract Month and Year from Filename ---
     match = re.search(r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})', filename, re.IGNORECASE)
     if not match:
         st.error(f"Error: Could not find a month and year in the filename '{filename}'.")
         st.info("Please ensure the filename is formatted like 'Duty August 2025.xlsx'.")
-        return None
+        return None, None
 
     month_name, year_str = match.groups()
     year = int(year_str)
@@ -52,7 +53,7 @@ def process_roster(file_bytes, sheet_name, duty_column_name, filename):
         # Check if the selected duty column exists
         if duty_column_name not in df.columns:
             st.error(f"Error: Column '{duty_column_name}' not found in the sheet '{sheet_name}'.")
-            return None
+            return None, None
 
         # Keep only the essential columns
         df = df[["day", duty_column_name]]
@@ -67,7 +68,7 @@ def process_roster(file_bytes, sheet_name, duty_column_name, filename):
         
         if df.empty:
             st.warning(f"No duties found for '{duty_column_name}' in the selected sheet.")
-            return None
+            return None, None
 
         # Find the first row where the day is '1' to handle mid-month starts in the sheet
         try:
@@ -75,27 +76,27 @@ def process_roster(file_bytes, sheet_name, duty_column_name, filename):
             df = df.loc[start_index:]
         except IndexError:
             st.error("Could not find the start of the month (Day 1) in the sheet. Please check the 'day' column.")
-            return None
+            return None, None
 
         # --- 5. Generate Dates and Create Final DataFrame ---
-        num_days_in_month = monthrange(year, month)[1]
-        
+        # num_days_in_month = monthrange(year, month)[1] # Not directly used for calendar_df creation
+
         # Create the final DataFrame for export
         calendar_df = pd.DataFrame()
-        # The subject can be the person's name plus the duty type from the cell
-        calendar_df['Subject'] = duty_column_name + " - " + df[duty_column_name].astype(str)
+        # Requirement 1: The subject should not contain the name of the person
+        calendar_df['Subject'] = df[duty_column_name].astype(str)
         
         # Create the date for each duty day
         calendar_df['Start Date'] = df['day'].apply(lambda day: f"{year}-{month:02d}-{day:02d}")
         
         calendar_df['All Day Event'] = 'True'
 
-        return calendar_df
+        return calendar_df, (month_name, year_str)
 
     except Exception as e:
         st.error(f"An unexpected error occurred while processing the Excel file: {e}")
         st.info("Please ensure the file is not corrupted and the sheet format is correct.")
-        return None
+        return None, None
 
 
 # --- Streamlit Web App UI ---
@@ -115,6 +116,15 @@ if uploaded_file is not None:
     # Use io.BytesIO to handle the uploaded file in memory
     file_bytes = io.BytesIO(uploaded_file.getvalue())
     
+    # Extract Month and Year from Filename here for use in output filename
+    match = re.search(r'(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})', uploaded_file.name, re.IGNORECASE)
+    if not match:
+        st.error(f"Error: Could not find a month and year in the filename '{uploaded_file.name}'.")
+        st.info("Please ensure the filename is formatted like 'Duty August 2025.xlsx'.")
+        st.stop() # Stop execution if filename is incorrect
+
+    filename_month_name, filename_year_str = match.groups()
+    
     try:
         xls = pd.ExcelFile(file_bytes)
         sheet_names = xls.sheet_names
@@ -128,14 +138,39 @@ if uploaded_file is not None:
             header_row_map = {"Duty - Senior": 3, "Duty_MO": 2, "Duty - Part time": 2}
             skiprows = header_row_map.get(selected_sheet, 2)
             
-            # Read just the header row to get names
+            # Read just the header row to get potential names
             df_for_cols = pd.read_excel(file_bytes, sheet_name=selected_sheet, skiprows=skiprows, nrows=0)
             
-            # Filter out helper columns like 'week', 'day', and any unnamed columns
-            duty_names = [col for col in df_for_cols.columns if 'unnamed' not in str(col).lower() and str(col).lower() not in ['week', 'day']]
+            # Requirement 2: Define a list of common non-name headers to exclude
+            non_name_headers = [
+                'week', 'day', 'unnamed', 'am', 'pm', 'consultant', 'specialist', 
+                'consultant i/c', 'final call', 'part-time', 'locum', 'full a', 
+                'full p', 'half shift a', 'half shift p', 'total', 'n', 'a ic', 
+                'p ic', 'a', 'p', 'ae', 'a2', 'a4', 'aw', 'pw', 'rat', 'p2', 'p5', 
+                'leave', 'o', 'leave + o', 'ac a+p', 'total a+p', 'intern', 'rs/ rt',
+                'smo/ ac', 'cons', 'emw', '00:00-08:00', '08:00-15:00',
+                '15:00-24:00', '08:00-17:00', '12:00-18:00', '12:30-16:30', '14:00-23:00',
+                '08:00-12:00', '12:00 - 16:00', '08:45-17:30', '08:00-14:00', '12:00 - 18:00',
+                '10:00-19:00', '08:00-16:00', '08:00-20:00', '10:00-18:00', '16:00-24:00',
+                '08:00-13:00', '13:00-21:00', '08:00-21:00', '08:00-19:00', '08:00-18:00',
+                '08:00-14:00', '12:00-19:00', '08:00-15:00', '15:00-22:00', '08:00-22:00',
+                '08:00-17:00', '08:00-16:00', '08:00-14:00', '12:00-18:00', '12:30-16:30',
+                '14:00-23:00', '08:00-12:00', '12:00 - 16:00', '08:45-17:30', '08:00-14:00',
+                '12:00 - 18:00', '10:00-19:00', '08:00-16:00', '08:00-20:00', '10:00-18:00',
+                '16:00-24:00', '08:00-13:00', '13:00-21:00', '08:00-21:00', '08:00-19:00',
+                '08:00-18:00', '08:00-14:00', '12:00-19:00', '08:00-15:00', '15:00-22:00',
+                '08:00-22:00'
+            ]
+            
+            # Filter out helper columns and known non-name headers
+            duty_names = [
+                col for col in df_for_cols.columns 
+                if 'unnamed' not in str(col).lower() 
+                and str(col).lower() not in non_name_headers
+            ]
 
             if not duty_names:
-                 st.error(f"Could not find any staff names in the sheet '{selected_sheet}'. Please check the file format.")
+                st.error(f"Could not find any staff names in the sheet '{selected_sheet}'. Please check the file format or if names are in the expected header row.")
             else:
                 # --- Step 3: Name Selection ---
                 st.header("Step 3: Select Your Name")
@@ -145,17 +180,17 @@ if uploaded_file is not None:
                 st.header("Step 4: Generate and Download")
                 if st.button(f"Generate Calendar for {selected_name}"):
                     with st.spinner("Processing your file..."):
-                        final_df = process_roster(file_bytes, selected_sheet, selected_name, uploaded_file.name)
+                        final_df, date_info = process_roster(file_bytes, selected_sheet, selected_name, uploaded_file.name)
 
-                    if final_df is not None:
+                    if final_df is not None and date_info is not None:
                         st.success("✅ Your calendar file is ready!")
                         st.dataframe(final_df)
 
                         # Convert DataFrame to CSV string, then encode to bytes
                         csv_bytes = final_df.to_csv(index=False).encode('utf-8')
 
-                        # Create the download button
-                        output_filename = f"{selected_name.replace(' ', '_')}-{selected_sheet}-{monthrange(2025,8)[0]}-{year_str}-Calendar.csv"
+                        # Create the download button with correct month and year from filename
+                        output_filename = f"{selected_name.replace(' ', '_')}-{selected_sheet}-{filename_month_name}-{filename_year_str}-Calendar.csv"
                         st.download_button(
                             label="📥 Download .csv File",
                             data=csv_bytes,
