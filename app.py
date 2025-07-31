@@ -101,7 +101,7 @@ def process_roster(file_bytes, sheet_name, duty_column_name, filename):
 
 st.set_page_config(page_title="PWH Duty Roster to Calendar", layout="centered")
 
-st.title("📅 Duty Roster to Google Calendar Converter")
+st.title("📅 PWH Duty Roster to Google Calendar Converter")
 st.write("This tool converts your XLSX duty roster into a CSV file that you can directly import into Google Calendar.")
 
 # --- Step 1: File Upload ---
