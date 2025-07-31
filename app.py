@@ -79,11 +79,9 @@ def process_roster(file_bytes, sheet_name, duty_column_name, filename):
             return None, None
 
         # --- 5. Generate Dates and Create Final DataFrame ---
-        # num_days_in_month = monthrange(year, month)[1] # Not directly used for calendar_df creation
-
         # Create the final DataFrame for export
         calendar_df = pd.DataFrame()
-        # Requirement 1: The subject should not contain the name of the person
+        # The subject should not contain the name of the person
         calendar_df['Subject'] = df[duty_column_name].astype(str)
         
         # Create the date for each duty day
@@ -145,28 +143,19 @@ if uploaded_file is not None:
             header_row_map = {"Duty - Senior": 3, "Duty_MO": 2, "Duty - Part time": 2}
             skiprows = header_row_map.get(selected_sheet, 2)
             
-            # Read just the header row to get potential names
+            # Requirement 2: Read just the header row from the *selected sheet* to get potential names.
+            # This ensures names are specific to the chosen sheet.
             df_for_cols = pd.read_excel(file_bytes, sheet_name=selected_sheet, skiprows=skiprows, nrows=0)
             
-            # Requirement 3: Define a list of common non-name headers to exclude
+            # Requirement 3: Define a simplified list of common non-name headers to exclude.
+            # Many previous entries are now covered by the "no numbers" and "not single letter" rules.
             non_name_headers = [
                 'week', 'day', 'unnamed', 'am', 'pm', 'consultant', 'specialist', 
                 'consultant i/c', 'final call', 'part-time', 'locum', 'full a', 
-                'full p', 'half shift a', 'half shift p', 'total', 'n', 'a ic', 
-                'p ic', 'a', 'p', 'ae', 'a2', 'a4', 'aw', 'pw', 'rat', 'p2', 'p5', 
-                'leave', 'o', 'leave + o', 'ac a+p', 'total a+p', 'intern', 'rs/ rt',
-                'smo/ ac', 'cons', 'emw', '00:00-08:00', '08:00-15:00',
-                '15:00-24:00', '08:00-17:00', '12:00-18:00', '12:30-16:30', '14:00-23:00',
-                '08:00-12:00', '12:00 - 16:00', '08:45-17:30', '08:00-14:00', '12:00 - 18:00',
-                '10:00-19:00', '08:00-16:00', '08:00-20:00', '10:00-18:00', '16:00-24:00',
-                '08:00-13:00', '13:00-21:00', '08:00-21:00', '08:00-19:00', '08:00-18:00',
-                '08:00-14:00', '12:00-19:00', '08:00-15:00', '15:00-22:00', '08:00-22:00',
-                '08:00-17:00', '08:00-16:00', '08:00-14:00', '12:00-18:00', '12:30-16:30',
-                '14:00-23:00', '08:00-12:00', '12:00 - 16:00', '08:45-17:30', '08:00-14:00',
-                '12:00 - 18:00', '10:00-19:00', '08:00-16:00', '08:00-20:00', '10:00-18:00',
-                '16:00-24:00', '08:00-13:00', '13:00-21:00', '08:00-21:00', '08:00-19:00',
-                '08:00-18:00', '08:00-14:00', '12:00-19:00', '08:00-15:00', '15:00-22:00',
-                '08:00-22:00'
+                'full p', 'half shift a', 'half shift p', 'total', 'a ic', 
+                'p ic', 'ae', 'aw', 'pw', 'rat', 'leave', 'o', 'ac a+p', 
+                'intern', 'rs/ rt', 'smo/ ac', 'cons', 'emw', 'new', 
+                'higher trainee rotation -qeh', 'sur', 'ort', 'diir', 'visiting dr.'
             ]
             
             # Filter out helper columns, known non-name headers, single letters, and names with numbers
@@ -174,8 +163,8 @@ if uploaded_file is not None:
                 col for col in df_for_cols.columns 
                 if 'unnamed' not in str(col).lower() 
                 and str(col).lower() not in non_name_headers
-                and len(str(col)) > 1 # Exclude single letters
-                and not any(char.isdigit() for char in str(col)) # Exclude names containing numbers
+                and len(str(col)) > 1 # Exclude single letters (e.g., 'N', 'A', 'P')
+                and not any(char.isdigit() for char in str(col)) # Exclude names containing numbers (e.g., 'A2', 'P5', time strings)
             ]
 
             if not duty_names:
