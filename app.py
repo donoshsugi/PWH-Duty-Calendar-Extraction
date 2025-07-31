@@ -127,11 +127,18 @@ if uploaded_file is not None:
     
     try:
         xls = pd.ExcelFile(file_bytes)
-        sheet_names = xls.sheet_names
+        all_sheet_names = xls.sheet_names
+
+        # Requirement 1: Filter sheet names to only include those with "Duty"
+        filtered_sheet_names = [name for name in all_sheet_names if "Duty" in name]
+        
+        if not filtered_sheet_names:
+            st.error("No sheets containing 'Duty' found in the uploaded file. Please check your sheet names.")
+            st.stop()
 
         # --- Step 2: Sheet Selection ---
         st.header("Step 2: Select the Duty Sheet")
-        selected_sheet = st.selectbox("Which sheet contains the duty roster?", sheet_names)
+        selected_sheet = st.selectbox("Which sheet contains the duty roster?", filtered_sheet_names)
 
         if selected_sheet:
             # Determine header row to read the names correctly
@@ -141,7 +148,7 @@ if uploaded_file is not None:
             # Read just the header row to get potential names
             df_for_cols = pd.read_excel(file_bytes, sheet_name=selected_sheet, skiprows=skiprows, nrows=0)
             
-            # Requirement 2: Define a list of common non-name headers to exclude
+            # Requirement 3: Define a list of common non-name headers to exclude
             non_name_headers = [
                 'week', 'day', 'unnamed', 'am', 'pm', 'consultant', 'specialist', 
                 'consultant i/c', 'final call', 'part-time', 'locum', 'full a', 
@@ -162,11 +169,13 @@ if uploaded_file is not None:
                 '08:00-22:00'
             ]
             
-            # Filter out helper columns and known non-name headers
+            # Filter out helper columns, known non-name headers, single letters, and names with numbers
             duty_names = [
                 col for col in df_for_cols.columns 
                 if 'unnamed' not in str(col).lower() 
                 and str(col).lower() not in non_name_headers
+                and len(str(col)) > 1 # Exclude single letters
+                and not any(char.isdigit() for char in str(col)) # Exclude names containing numbers
             ]
 
             if not duty_names:
