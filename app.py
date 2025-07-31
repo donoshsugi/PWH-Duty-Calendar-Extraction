@@ -147,25 +147,46 @@ if uploaded_file is not None:
             # This ensures names are specific to the chosen sheet.
             df_for_cols = pd.read_excel(file_bytes, sheet_name=selected_sheet, skiprows=skiprows, nrows=0)
             
-            # Requirement 3: Define a simplified list of common non-name headers to exclude.
-            # Many previous entries are now covered by the "no numbers" and "not single letter" rules.
-            non_name_headers = [
-                'week', 'day', 'unnamed', 'am', 'pm', 'consultant', 'specialist', 
-                'consultant i/c', 'final call', 'part-time', 'locum', 'full a', 
-                'full p', 'half shift a', 'half shift p', 'total', 'a ic', 
-                'p ic', 'ae', 'aw', 'pw', 'rat', 'leave', 'o', 'ac a+p', 
-                'intern', 'rs/ rt', 'smo/ ac', 'cons', 'emw', 'new', 
-                'higher trainee rotation -qeh', 'sur', 'ort', 'diir', 'visiting dr.'
+            # Requirement 3 & 4: Define patterns for non-name headers.
+            # Simplified based on "no numbers", "not single letter", and new exclusions.
+            non_name_patterns = [
+                r'unnamed', r'week', r'day', r'am', r'pm', r'consultant', r'specialist',
+                r'final call', r'part-time', r'locum', r'full', r'half', r'total',
+                r'ic', r'ae', r'aw', r'pw', r'rat', r'leave', r'ac',
+                r'intern', r'rs', r'rt', r'smo', r'cons', r'emw', r'new',
+                r'rotation', r'sur', r'ort', r'diir', r'visiting dr',
+                r'fall', r'shift', r'qeh', r'mo', # Added 'qeh' and 'mo' for robustness
+                r'fm', # Added 'fm'
+                r'ortho' # Added 'ortho'
             ]
             
-            # Filter out helper columns, known non-name headers, single letters, and names with numbers
-            duty_names = [
-                col for col in df_for_cols.columns 
-                if 'unnamed' not in str(col).lower() 
-                and str(col).lower() not in non_name_headers
-                and len(str(col)) > 1 # Exclude single letters (e.g., 'N', 'A', 'P')
-                and not any(char.isdigit() for char in str(col)) # Exclude names containing numbers (e.g., 'A2', 'P5', time strings)
-            ]
+            # Filter out columns that are not names
+            duty_names = []
+            for col in df_for_cols.columns:
+                col_lower = str(col).lower().strip()
+                
+                # Exclude if it's an unnamed column
+                if 'unnamed' in col_lower:
+                    continue
+                
+                # Exclude if it's a single letter
+                if len(col_lower) == 1:
+                    continue
+                
+                # Exclude if it contains a digit
+                if any(char.isdigit() for char in col_lower):
+                    continue
+                
+                # Exclude if it matches any non-name pattern
+                is_non_name = False
+                for pattern in non_name_patterns:
+                    if re.search(pattern, col_lower):
+                        is_non_name = True
+                        break
+                if is_non_name:
+                    continue
+                
+                duty_names.append(col)
 
             if not duty_names:
                 st.error(f"Could not find any staff names in the sheet '{selected_sheet}'. Please check the file format or if names are in the expected header row.")
